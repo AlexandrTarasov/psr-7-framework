@@ -2,8 +2,9 @@
 
 namespace Tests\Framework\Http;
 
-use Framework\Http\Response;
 use PHPUnit\Framework\TestCase;
+use Zend\Diactoros\Response;
+use Zend\Diactoros\Response\HtmlResponse;
 
 
 
@@ -11,7 +12,7 @@ class ResponseTest extends TestCase
 {
 	public function tesEmpty(): void
 	{
-		$response = new Response($body = 'Body');
+		$response = new HtmlResonse($body = 'Body');
 
 		self::assertEquals($body, $response->getBody()->getContents());
 		self::assertEquals(200, $response->getStatusCode());
@@ -20,7 +21,7 @@ class ResponseTest extends TestCase
 
 	public function test404():void
 	{
-		$response = new Response($body = 'Empty', $status = 404);
+		$response = new HtmlResponse($body = 'Empty', $status = 404);
 
 		self::assertEquals($body, $response->getBody()->getContents());
 		self::assertEquals($status, $response->getStatusCode());
