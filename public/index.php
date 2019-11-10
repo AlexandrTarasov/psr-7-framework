@@ -1,26 +1,51 @@
 <?php
-
-use Zend\Diactoros\Response\HtmlResponse;
-use Zend\Diactoros\ServerRequestFactory;
-
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+use App\Http\Action;
+use Framework\Http\Router\Exception\RequestNotMatchedException;
+use Framework\Http\Router\RouteCollection;
+use Framework\Http\Router\Router;
+
+use Zend\Diactoros\Response\HtmlResponse;
+use Zend\HttpHandlerRunner\Emitter\SapiEmitter;
+use Zend\Diactoros\ServerRequestFactory;
+use Aura\Router\RouterContainer;
+
+
 chdir(dirname(__DIR__));
 require 'vendor/autoload.php';
 
+$routes = new RouteCollection();
+$routes->get('home', '/', Action\HelloAction::class);
+$routes->get('about', '/about', Action\AboutAction::class);
+$routes->get('blog', '/blog', Action\Blog\IndexAction::class);
+$routes->get('blog_show', '/blog/{id}', Action\Blog\ShowAction::class, ['id' => '\d+']);
+
+$router = new Router($routes);
+
+### Running
+
 $request = ServerRequestFactory::fromGlobals();
-
-$name = $request->getQueryParams()['name'] ?? 'Guest';
-$response = (new HtmlResponse('Hello,' . $name . '!'))
-	->withHeader('X-developer', 'Alex T');
-
-header('HTTP/1.0 '. $response->getStatusCode() . ' ' . $response->getReasonPhrase());
-foreach($response->getHeaders() as $name => $values){
-	header($name . ':' . implode(', ', $values));
+try {
+    $result = $router->match($request);
+    foreach ($result->getAttributes() as $attribute => $value) {
+        $request = $request->withAttribute($attribute, $value);
+    }
+    $handler = $result->getHandler();
+    /** @var callable $action */
+    $action = is_string($handler) ? new $handler() : $handler;
+    $response = $action($request);
+} catch (RequestNotMatchedException $e){
+    $response = new HtmlResponse('Undefined page', 404);
 }
 
+// var_dump($response);
+### Postprocessing
+$response = $response->withHeader('X-developer', 'Alex T');
+### Sending
 
-echo $response->getBody();
+$emitter = new SapiEmitter();
+$emitter->emit($response);
 
