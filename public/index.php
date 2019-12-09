@@ -9,8 +9,7 @@ use Framework\Http\Router\Exception\RequestNotMatchedException;
 // use Framework\Http\Router\RouteCollection;
 // use Framework\Http\Router\Router;
 use Framework\Http\Pipeline\Pipeline;
-use Framework\Http\ActionResolver;
-use Psr\Http\Message\ServerRequestInterface;
+use Framework\Http\Pipeline\MiddlewareResolver;
 use Zend\HttpHandlerRunner\Emitter\SapiEmitter;
 use Zend\Diactoros\ServerRequestFactory;
 use Framework\Http\Router\AuraRouterAdapter;
@@ -32,16 +31,16 @@ $routes->get('about', '/about', Action\AboutAction::class);
 $routes->get('blog', '/blog', Action\Blog\IndexAction::class);
 $routes->get('blog_show', '/blog/{id}', Action\Blog\ShowAction::class)->tokens(['id' => '\d+']);
 
-$routes->get('cabinet', '/cabinet', function (ServerRequestInterface $request) use ($params) {
-    $pipeline = new Pipeline();
-    $pipeline->pipe(new Middleware\ProfilerMiddleware());
-    $pipeline->pipe(new Middleware\BasicAuthMiddleware($params['users']));
-    $pipeline->pipe(new Action\CabinetAction());
-    return $pipeline($request, new Middleware\NotFoundHandler());
-});
+$routes->get('cabinet', '/cabinet', [
+    new Middleware\BasicAuthMiddleware($params['users']),
+    Action\CabinetAction::class,
+]);
 
 $router = new AuraRouterAdapter($aura);
-$resolver = new ActionResolver();
+$resolver = new MiddlewareResolver();
+
+$pipeline = new Pipeline();
+$pipeline->pipe($resolver->resolve(Middleware\ProfilerMiddleware::class));
 ### Running
 
 $request = ServerRequestFactory::fromGlobals();
@@ -50,12 +49,11 @@ try {
     foreach ($result->getAttributes() as $attribute => $value) {
         $request = $request->withAttribute($attribute, $value);
     }
-    $action = $resolver->resolve($result->getHandler());
-    $response = $action($request);
-} catch (RequestNotMatchedException $e){
-        $handler = new Middleware\NotFoundHandler();
-		$response = $handler($request);
-}
+    $handler = $result->getHandler();
+    $pipeline->pipe($resolver->resolve($handler));
+} catch (RequestNotMatchedException $e){}
+
+$response = $pipeline($request, new Middleware\NotFoundHandler());
 
 // var_dump($response);
 ### Postprocessing
