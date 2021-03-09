@@ -5,11 +5,11 @@ error_reporting(E_ALL);
 
 use App\Http\Action;
 use App\Http\Middleware;
-use Framework\Http\Router\Exception\RequestNotMatchedException;
+use Framework\Http\Application;
 // use Framework\Http\Router\RouteCollection;
 // use Framework\Http\Router\Router;
-use Framework\Http\Pipeline\Pipeline;
 use Framework\Http\Pipeline\MiddlewareResolver;
+use Zend\Diactoros\Response;
 use Zend\HttpHandlerRunner\Emitter\SapiEmitter;
 use Zend\Diactoros\ServerRequestFactory;
 use Framework\Http\Router\AuraRouterAdapter;
@@ -19,6 +19,7 @@ chdir(dirname(__DIR__));
 require 'vendor/autoload.php';
 
 $params = [
+    'debug' => true,
     'users' => ['admin' => 'password'],
 ];
 
@@ -39,25 +40,19 @@ $routes->get('cabinet', '/cabinet', [
 $router = new AuraRouterAdapter($aura);
 $resolver = new MiddlewareResolver();
 
-$pipeline = new Pipeline();
-$pipeline->pipe($resolver->resolve(Middleware\ProfilerMiddleware::class));
+$app = new Application($resolver, new Middleware\NotFoundHandler());
+$app->pipe(new Middleware\ErrorHandlerMiddleware($params['debug']));
+$app->pipe(Middleware\CredentialsMiddleware::class);
+$app->pipe(Middleware\ProfilerMiddleware::class);
+$app->pipe(new Framework\Http\Middleware\RouteMiddleware($router));
+$app->pipe(new Framework\Http\Middleware\DispatchMiddleware($resolver));
 ### Running
 
 $request = ServerRequestFactory::fromGlobals();
-try {
-    $result = $router->match($request);
-    foreach ($result->getAttributes() as $attribute => $value) {
-        $request = $request->withAttribute($attribute, $value);
-    }
-    $handler = $result->getHandler();
-    $pipeline->pipe($resolver->resolve($handler));
-} catch (RequestNotMatchedException $e){}
-
-$response = $pipeline($request, new Middleware\NotFoundHandler());
+$response = $app->run($request, new Response());
 
 // var_dump($response);
-### Postprocessing
-$response = $response->withHeader('X-developer', 'Alex T');
+
 ### Sending
 
 $emitter = new SapiEmitter();
